@@ -2,7 +2,7 @@ build_and_tag () {
 	REPO=$1
 	TAG=$2
     echo "📦 Building vapor/$REPO:$TAG"
-    docker tag $(docker build -q -f $REPO/$TAG/Dockerfile .) vapor/$REPO:$TAG
+    docker tag $(docker build --no-cache -q -f $REPO/$TAG/Dockerfile .) vapor/$REPO:$TAG
     docker push vapor/$REPO:$TAG
 }
 
