@@ -6,6 +6,9 @@ build_and_tag () {
     docker push vapor/$REPO:$TAG
 }
 
+build_and_tag "swift" "5.2"
+build_and_tag "swift" "5.2-bionic"
+build_and_tag "swift" "5.2-xenial"
 build_and_tag "swift" "5.1"
 build_and_tag "swift" "5.1-bionic"
 build_and_tag "swift" "5.1-xenial"
