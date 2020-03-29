@@ -125,3 +125,79 @@ public struct ImageSpecification: Codable, Hashable, Equatable { // self-contain
     public let buildOrder: Int // a key made available in case the order images are built and pushed in ever matters. what goes here isn't well-defined yet and it's pretty much ignored for now
     public let autoGenerationContext: [String]? // describes the nesting and permutation values used for generating this structure; nil if it was created directly
 }
+
+// MARK: - Actual specs!
+
+extension ImageBuilderConfiguration {
+
+    private static var commonSwiftImageTemplate: ImageTemplate {
+        .init(
+            nameTemplate: "${REPOSITORY_NAME}:${SWIFT_VERSION}-${IMAGE_OS_VERSION}-${IMAGE_VAPOR_VARIANT}${:trimStems}",
+            buildArguments: [
+                "SWIFT_BASE_IMAGE": "${SWIFT_BASE_REPO_NAME}:${SWIFT_BASE_VERSION}-${IMAGE_OS_VERSION}${:trimStems}",
+                "ADDITIONAL_APT_DEPENDENCIES": "${LIBSSL_DEPENDENCY} ${CURL_DEPENDENCY}${:trim}"
+            ]
+        )
+    }
+    
+    private static var ubuntuXenialDeps: [String: String] { ["UBUNTU_VERSION_SPECIFIC_APT_DEPENDENCIES": "libicu55 libcurl3"] }
+    private static var ubuntuBionicDeps: [String: String] { ["UBUNTU_VERSION_SPECIFIC_APT_DEPENDENCIES": "libicu60 libcurl4"] }
+
+    public static var preconfiguredImageSpecifications: Self { return .init(
+    
+        globalReplacements: [
+            "SWIFT_BASE_REPO_NAME": "swift",
+            "SWIFT_BASE_VERSION": "${SWIFT_VERSION}"
+        ],
+    
+// MARK: - Vapor Swift repo, `vapor/swift` prefix
+        .init(
+            name: "vapor/swift",
+            defaultDockerfile: "main.Dockerfile",
+            replacements: ["REPOSITORY_NAME": "vapor/swift"],
+            template: commonSwiftImageTemplate,
+            
+            // Vapor 4-compatible Swift versions we build - 5.2 and master. Master uses the swiftlang/swift repo.
+            .init("SWIFT_VERSION",
+                .value("5.2"),
+                .valueAndKeys("master", ["SWIFT_BASE_REPO_NAME": "swiftlang/swift", "SWIFT_BASE_VERSION": "nightly-master"])
+            ),
+            // Swift Ubuntu OS version variant set - none (bionic by default), bionic, and xenial.
+            .init("IMAGE_OS_VERSION", .empty, .value("xenial"), .value("bionic")),
+            // Image build purpose variant set - standard (no extra tag) and CI (requiring curl installed)
+            .init("IMAGE_VAPOR_VARIANT", .empty, .valueAndKeys("ci", ["CURL_DEPENDENCY": "curl"]))
+        ),
+        
+// MARK: - Vapor3 legacy org and swift repo, vapor3/swift* images
+        .init(
+            name: "vapor3/swift",
+            defaultDockerfile: "main.Dockerfile",
+            replacements: ["REPOSITORY_NAME": "vapor3/swift", "LIBSSL_DEPENDENCY": "libssl-dev"],
+            template: commonSwiftImageTemplate,
+            // Same permutations as the main Vapor repo, but different Swift versions
+            .init("SWIFT_VERSION", .value("5.0"), .value("5.1"), .value("5.2")),
+            .init("IMAGE_OS_VERSION", .empty, .value("xenial"), .value("bionic")),
+            .init("IMAGE_VAPOR_VARIANT", .empty, .valueAndKeys("ci", ["CURL_DEPENDENCY": "curl"]))
+        ),
+
+// MARK: - Ubuntu repo, `vapor/ubuntu` prefix
+        .init(
+            name: "vapor/ubuntu",
+            defaultDockerfile: "ubuntu.Dockerfile",
+            template: .init(
+                nameTemplate: "vapor/ubuntu:${UBUNTU_OS_IMAGE_VERSION}",
+                buildArguments: [
+                    "UBUNTU_OS_IMAGE_VERSION": "${UBUNTU_OS_IMAGE_VERSION}",
+                    "UBUNTU_VERSION_SPECIFIC_APT_DEPENDENCIES": "${UBUNTU_VERSION_SPECIFIC_APT_DEPENDENCIES}"
+                ]
+            ),
+            
+            // Build images for xenial and bionic, and provide version number aliases.
+            .init("UBUNTU_OS_IMAGE_VERSION",
+                .valueAndKeys("16.04", ubuntuXenialDeps), .valueAndKeys("18.04", ubuntuBionicDeps),
+                .valueAndKeys("xenial", ubuntuXenialDeps), .valueAndKeys("bionic", ubuntuBionicDeps)
+            )
+        )
+
+    ) }
+}
