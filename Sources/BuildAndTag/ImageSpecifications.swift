@@ -153,7 +153,7 @@ extension ImageBuilderConfiguration {
 // MARK: - Vapor Swift repo, `vapor/swift` prefix
         .init(
             name: "vapor/swift",
-            defaultDockerfile: "main.Dockerfile",
+            defaultDockerfile: "swift.Dockerfile",
             replacements: ["REPOSITORY_NAME": "vapor/swift"],
             template: commonSwiftImageTemplate,
             
@@ -171,7 +171,7 @@ extension ImageBuilderConfiguration {
 // MARK: - Vapor3 legacy org and swift repo, vapor3/swift* images
         .init(
             name: "vapor3/swift",
-            defaultDockerfile: "main.Dockerfile",
+            defaultDockerfile: "swift.Dockerfile",
             replacements: ["REPOSITORY_NAME": "vapor3/swift", "LIBSSL_DEPENDENCY": "libssl-dev"],
             template: commonSwiftImageTemplate,
             // Same permutations as the main Vapor repo, but different Swift versions
