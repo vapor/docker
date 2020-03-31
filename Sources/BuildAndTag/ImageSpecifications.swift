@@ -44,6 +44,9 @@ public struct ImageRepository: Hashable, Equatable {
                     result = result.replacingCharacters(in: match, with: "").replacingOccurrences(of: "-{2,}", with: "-", options: .regularExpression).replacingOccurrences(of: "-$", with: "", options: .regularExpression)
                 } else if result[match] == "${:trim}" {
                     result = result.replacingCharacters(in: match, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if result[match] == "${:chopVersion}" {
+                    result = result.replacingCharacters(in: result.index(match.lowerBound, offsetBy: -2)..<match.upperBound, with: "")
+                    // This will break if there are ten patches in one minor Swift release
                 } else {
                     result = result.replacingCharacters(in: match, with: replacements[String(result[match].dropFirst(2).dropLast())] ?? "")
                 }
@@ -142,12 +145,13 @@ extension ImageBuilderConfiguration {
     
     private static var ubuntuXenialDeps: [String: String] { ["UBUNTU_VERSION_SPECIFIC_APT_DEPENDENCIES": "libicu55 libcurl3"] }
     private static var ubuntuBionicDeps: [String: String] { ["UBUNTU_VERSION_SPECIFIC_APT_DEPENDENCIES": "libicu60 libcurl4"] }
-
+    
     public static var preconfiguredImageSpecifications: Self { return .init(
     
         globalReplacements: [
+            "SWIFT_LATEST_RELEASE_VERSION": "5.2.1", // last updated 03/31/2020
             "SWIFT_BASE_REPO_NAME": "swift",
-            "SWIFT_BASE_VERSION": "${SWIFT_VERSION}"
+            "SWIFT_BASE_VERSION": "${SWIFT_VERSION}",
         ],
     
 // MARK: - Vapor Swift repo, `vapor/swift` prefix
@@ -157,9 +161,15 @@ extension ImageBuilderConfiguration {
             replacements: ["REPOSITORY_NAME": "vapor/swift"],
             template: commonSwiftImageTemplate,
             
-            // Vapor 4-compatible Swift versions we build - 5.2 and master. Master uses the swiftlang/swift repo.
+            // Vapor 4-compatible Swift versions we build.
             .init("SWIFT_VERSION",
-                .value("5.2"),
+                // Build latest release version and aliases for it, including "latest".
+                // Master is not latest; it's a nightly.
+                .value("${SWIFT_LATEST_RELEASE_VERSION}"),
+                .value("${SWIFT_LATEST_RELEASE_VERSION}${:chopVersion}"),
+                .value("latest"),
+                
+                // Build swiftlang/nightly-master as master.
                 .valueAndKeys("master", ["SWIFT_BASE_REPO_NAME": "swiftlang/swift", "SWIFT_BASE_VERSION": "nightly-master"])
             ),
             // Swift Ubuntu OS version variant set - none (bionic by default), bionic, and xenial.
@@ -174,8 +184,12 @@ extension ImageBuilderConfiguration {
             defaultDockerfile: "swift.Dockerfile",
             replacements: ["REPOSITORY_NAME": "vapor3/swift", "LIBSSL_DEPENDENCY": "libssl-dev"],
             template: commonSwiftImageTemplate,
-            // Same permutations as the main Vapor repo, but different Swift versions
-            .init("SWIFT_VERSION", .value("5.0"), .value("5.1"), .value("5.2")),
+            // Build latest again, plus a couple of older ones and their aliases.
+            .init("SWIFT_VERSION",
+                .value("5.0.3"), .value("5.0"),
+                .value("5.1.5"), .value("5.1"),
+                .value("latest"), .value("${SWIFT_LATEST_RELEASE_VERSION}"), .value("${SWIFT_LATEST_RELEASE_VERSION}${:chopVersion}")
+            ),
             .init("IMAGE_OS_VERSION", .empty, .value("xenial"), .value("bionic")),
             .init("IMAGE_VAPOR_VARIANT", .empty, .valueAndKeys("ci", ["CURL_DEPENDENCY": "curl"]))
         ),
