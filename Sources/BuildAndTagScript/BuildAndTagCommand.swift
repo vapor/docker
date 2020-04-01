@@ -97,6 +97,9 @@ public final class BuildAndTagCommand: Command {
         
         @Flag(name: "verbose", short: "v", help: "Run `docker build` and `docker push` in verbose mode")
         var verbose: Bool
+        
+        @Flag(name: "debug", short: "D", help: "Enable printing extra debugging info. Implies -v.")
+        var debug: Bool
 
         public init() {}
     }
@@ -134,28 +137,14 @@ public final class BuildAndTagCommand: Command {
         currentTask?.waitUntilExit()
         return currentTask!.terminationStatus
     }
-    
+
     func getAndPrintSpecs(context: CommandContext, signature: Signature) -> [ImageSpecification] {
         let excludedRepos = signature.excludedRepos?.components(separatedBy: ",") ?? []
         let excludedSwiftVersions = signature.excludedSwiftVersions?.components(separatedBy: ",") ?? []
         let excludedTags = signature.excludedImageTags?.components(separatedBy: ",") ?? []
-        var specs: [ImageSpecification] = []
+        let specs = getAllPreconfiguredSpecs(excludingRepositories: excludedRepos, swiftVersions: excludedSwiftVersions, tags: excludedTags)
 
-        for repo in ImageBuilderConfiguration.preconfiguredImageSpecifications.repositories {
-            guard !excludedRepos.contains(repo.name) else { continue }
-            specs.append(contentsOf: repo.makeImageSpecs(withGlobalReplacements: ImageBuilderConfiguration.preconfiguredImageSpecifications.replacements))
-        }
-        specs.removeAll { spec in excludedTags.contains(spec.tag) || excludedSwiftVersions.contains { spec.tag.contains("swift:\($0)") } }
-        specs.sort { $0.tag < $1.tag }
-        
-        context.console.info("Building \(specs.count) images:")
-        for spec in specs {
-            context.console.info("  - \(spec.tag)", newLine: !signature.verbose)
-            if signature.verbose {
-                context.console.info("  \(spec.buildArguments.map {"\($0.key)=\($0.value)"}.joined(separator: ", "))")
-            }
-        }
-        context.console.info()
+        list(specs: specs, heading: "Building \(specs.count) images:", in: context, verbose: signature.verbose, debug: signature.debug)
         return specs
     }
     
@@ -179,7 +168,7 @@ public final class BuildAndTagCommand: Command {
             
             var buildCommand = ["docker", "build", "--tag", spec.tag, "--label", "codes.vapor.images.prebuilt=1", "--file", spec.dockerfile]
             
-            if !signature.verbose {
+            if !signature.verbose || signature.debug {
                 buildCommand.append("--quiet")
             }
             buildCommand.append(contentsOf: spec.buildArguments.flatMap { ["--build-arg", "\($0.key)=\($0.value)"] })
@@ -188,14 +177,14 @@ public final class BuildAndTagCommand: Command {
             
             var indicator: ActivityIndicator<CustomActivity>? = nil
 
-            if signature.verbose {
+            if signature.verbose || signature.debug {
                 context.console.output("Running build command: \(buildCommand.joined(separator: " "))", style: .init(color: .brightGreen))
             } else {
                 indicator = context.console.dockerBuildCustomActivity()
             }
             indicator?.start(refreshRate: 50)
-            if try runCommand(buildCommand, preservingStreams: signature.verbose) == 0 {
-                if signature.verbose {
+            if try runCommand(buildCommand, preservingStreams: signature.verbose || signature.debug) == 0 {
+                if signature.verbose || signature.debug {
                     context.console.output("Finished building image \(spec.tag)", style: .init(color: .brightGreen))
                 }
                 indicator?.succeed()
@@ -215,7 +204,7 @@ public final class BuildAndTagCommand: Command {
             
             let pushCommand = ["docker", "push", spec.tag]
             
-            if signature.verbose || signature.dontReallyPushImages {
+            if signature.verbose || signature.debug || signature.dontReallyPushImages {
                 context.console.output("📦📤 Running push command: \(pushCommand.joined(separator: " "))", style: .init(color: .brightGreen))
             }
             if signature.dontReallyPushImages {

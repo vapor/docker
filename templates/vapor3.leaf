@@ -1,0 +1,33 @@
+\#\# Supported tags
+
+#for(line in specsByVersion):
+- #for(spec in line):`#(spec.tag)`#if(!isLast):, #endif #endfor
+#endfor
+
+\#\# Quick reference
+
+- [Vapor Homepage](https://vapor.codes)
+
+- [Vapor Docs](https://docs.vapor.codes/4.0/)
+
+- [Vapor 4-compatible modern images](https://hub.docker.com/r/vapor/swift)
+
+- [Source of these images](https://github.com/vapor/docker.git)
+
+\#\# How to use these images
+
+Use them where you would otherwise use a `swift` image of the same version to avoid having to manually keep track of Vapor's dependencies and spend time building them each time you use Docker. These images are specifically intended for use with legacy Vapor 3 projects.
+
+\#\# Image Variants
+
+\#\#\# `vapor3/swift:<version>`
+
+The image built from the corresponding `swift:<version>` image, containing Vapor's compile-time dependencies preinstalled.
+
+\#\#\# `vapor3/swift:<version>-ci`
+
+A version of the base Vapor image which includes the `curl` APT package preinstalled. Intended for use by CI systems that expect to find it available.
+
+\# License
+
+[MIT license.](https://github.com/vapor/docker/blob/master/LICENSE)

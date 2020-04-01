@@ -1,0 +1,45 @@
+<p align="center"><img src="https://docs.vapor.codes/4.0/logo.png" alt="logo" width="200" height="200"><br></p>
+
+\# Vapor 4
+
+\#\# Supported tags
+
+#for(line in specsByVersion):
+- #for(spec in line):`#(spec.tag)`#if(!isLast):, #endif #endfor
+#endfor
+
+\#\# Quick reference
+
+- [Vapor Homepage](https://vapor.codes)
+
+- [Vapor Docs](https://docs.vapor.codes/4.0/)
+
+- [Vapor 3-compatible legacy images](https://hub.docker.com/r/vapor3/swift)
+
+- [Source of these images](https://github.com/vapor/docker.git)
+
+\#\# How to use these images
+
+Use these where you would otherwise use a `swift` image of the same version to avoid having to manually keep track of Vapor's dependencies and spend time building them each time you use Docker.
+
+\#\# Image Variants
+
+\#\#\# `vapor/swift:<version>`
+
+The image built from the corresponding `swift:<version>` image, containing Vapor's compile-time dependencies preinstalled.
+
+\#\#\# `vapor/swift:<version>-ci`
+
+A version of the base Vapor image which includes the `curl` APT package preinstalled. Intended for use by CI systems that expect to find it available.
+
+\#\#\# `vapor/swift:master`
+
+A version of the Vapor base image built from the latest `swiftlang/swift:nightly-master` image at the time of the last upload of Vapor images. Updated frequently but, at this time, not automatically.
+
+\#\#\# `vapor/ubuntu:<version>`
+
+The image built from a corresponding `ubuntu:<version>` image, containing Vapor's _runtime_ dependencies preinstalled. Most useful when building a Docker image for a Vapor app in two stages. Use a `vapor/swift` image as the builder, and a `vapor/ubuntu` image as the runner.
+
+\# License
+
+[MIT license.](https://github.com/vapor/docker/blob/master/LICENSE)
