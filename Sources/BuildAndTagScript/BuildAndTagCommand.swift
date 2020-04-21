@@ -149,8 +149,7 @@ public final class BuildAndTagCommand: Command {
     }
     
     public func run(using context: CommandContext, signature: Signature) throws {
-        // Waiting on https://github.com/vapor/console-kit/pull/136/files for this
-        //context.console.stylizedOutputOverride = (signature.color ?? .automatic).sytlizedOutputOverrideValue
+        context.console.stylizedOutputOverride = (signature.color ?? .automatic).sytlizedOutputOverrideValue
         
         let specs = getAndPrintSpecs(context: context, signature: signature)
         
@@ -166,7 +165,7 @@ public final class BuildAndTagCommand: Command {
         for spec in specs {
             context.console.output("📦 Building \(spec.tag)", style: .init(color: .brightCyan))
             
-            var buildCommand = ["docker", "build", "--tag", spec.tag, "--label", "codes.vapor.images.prebuilt=1", "--file", spec.dockerfile]
+            var buildCommand = ["docker", "build", "--pull", "--tag", spec.tag, "--label", "codes.vapor.images.prebuilt=1", "--file", spec.dockerfile]
             
             if !signature.verbose || signature.debug {
                 buildCommand.append("--quiet")
