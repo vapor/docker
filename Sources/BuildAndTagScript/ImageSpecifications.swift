@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Perfunctory data models
 
 public struct ImageBuilderConfiguration: Hashable, Equatable { // container for global options and a list of repos
-    public let repositories: Set<ImageRepository>
+    public let repositories: [ImageRepository]
     public let replacements: [String: String]
     
     public init(globalReplacements: [String: String] = [:], _ repositories: ImageRepository...) {
@@ -11,7 +11,7 @@ public struct ImageBuilderConfiguration: Hashable, Equatable { // container for 
     }
 
     public init(globalReplacements: [String: String] = [:], _ repositories: [ImageRepository]) {
-        self.repositories = Set(repositories)
+        self.repositories = repositories
         self.replacements = globalReplacements
     }
 }
@@ -29,14 +29,14 @@ public struct ImageRepository: Hashable, Equatable {
         self.defaultDockerfile = defaultDockerfile
         self.replacements = replacements
         self.template = template
-        self.generatingVariations = ImageAutoVariantGroup(sets: Set(generatingVariations))
+        self.generatingVariations = ImageAutoVariantGroup(sets: generatingVariations)
     }
     
-    func permutedVariants(withGlobalReplacements globalReplacements: [String: String]) -> Set<[String: String]> {
-        return self.generatingVariations.permute(withBaseReplacements: globalReplacements.merging(self.replacements, uniquingKeysWith: { $1 }))
+    func permutedVariants(withGlobalReplacements globalReplacements: [String: String]) -> [[String: String]] {
+        return self.generatingVariations.permute(withBaseReplacements: globalReplacements.updating(with: self.replacements))
     }
     
-    func makeImageSpecs(withGlobalReplacements globalReplacements: [String: String]) -> Set<ImageSpecification> {
+    func makeImageSpecs(withGlobalReplacements globalReplacements: [String: String]) -> [ImageSpecification] {
         func doReplacements(in template: String, using replacements: [String: String]) -> String {
             var result = template
             while let match = result.range(of: "\\$\\{[A-Za-z_:]+?\\}", options: .regularExpression) {
@@ -54,16 +54,16 @@ public struct ImageRepository: Hashable, Equatable {
             return result
         }
         
-        return Set(self.permutedVariants(withGlobalReplacements: globalReplacements).map { replacements in
+        return self.permutedVariants(withGlobalReplacements: globalReplacements).enumerated().map { i, replacements in
             ImageSpecification(
                 tag: doReplacements(in: self.template.nameTemplate, using: replacements),
                 dockerfile: self.defaultDockerfile,
                 buildArguments: self.template.buildArguments.mapValues { doReplacements(in: $0, using: replacements) },
                 extraBuildOptions: self.template.extraBuildOptions,
-                buildOrder: 0,
-                autoGenerationContext: [replacements.map { k,v in "\(k): \(v)" }.joined(separator: ", ")]
+                buildOrder: i,
+                autoGenerationContext: replacements
             )
-        })
+        }
     }
 }
 
@@ -77,34 +77,24 @@ public struct ImageTemplate: Codable, Hashable, Equatable {
 }
 
 public struct ImageAutoVariantGroup: Hashable, Equatable {
-    let sets: Set<ImageAutoVariantKeyedSet> // all sets in one group
+    let sets: [ImageAutoVariantKeyedSet] // all sets in one group, keep as array instead of set so 1st-level set permute order is deterministic
     
-    func permute(withBaseReplacements replacements: [String: String]) -> Set<[String: String]> {
-        Set(self.sets.reduce(["": replacements]) { currentPermutes, set in
-            return .init(uniqueKeysWithValues: set.valuesWithKeyApplied.flatMap { keyedValue in
-                return currentPermutes.map { permuteKey, replacements in
-                    ("\(permuteKey)++\(keyedValue[set.key]!)", replacements.merging(keyedValue, uniquingKeysWith: { $1 }))
-                }
-            })
-        }.values)
+    func permute(withBaseReplacements replacements: [String: String]) -> [[String: String]] {
+        self.sets.reduce([replacements]) { p, set in set.valuesMergingKey.flatMap { v in p.map { $0.updating(with: v) } } }
     }
 }
 
 public struct ImageAutoVariantKeyedSet: Hashable, Equatable {
     let key: String
-    let values: Set<ImageAutoVariantSetValue>
+    let values: [ImageAutoVariantSetValue]
     
-    var valuesWithKeyApplied: Set<[String: String]> {
-        Set(self.values.map { value in
-            var raw = value.asRawValue
-            raw.replacements[self.key] = raw.name
-            return raw.replacements
-        })
+    var valuesMergingKey: [[String: String]] {
+        self.values.map { $0.asRawValue }.map { v in [self.key: v.name].updating(with: v.replacements) }
     }
     
     init(_ key: String, _ values: ImageAutoVariantSetValue...) {
         self.key = key
-        self.values = Set(values)
+        self.values = values
     }
 }
 
@@ -125,8 +115,31 @@ public struct ImageSpecification: Codable, Hashable, Equatable { // self-contain
     public let dockerfile: String // relative from root
     public let buildArguments: [String: String] // values for `--build-arg`, fully evaluated for any replacements
     public let extraBuildOptions: [String] // additional commands options for `docker build`. avoid if possible.
-    public let buildOrder: Int // a key made available in case the order images are built and pushed in ever matters. what goes here isn't well-defined yet and it's pretty much ignored for now
-    public let autoGenerationContext: [String]? // describes the nesting and permutation values used for generating this structure; nil if it was created directly
+    public let buildOrder: Int // the original index this spec had in the permutation matrix for the repo that it belongs to
+    public let autoGenerationContext: [String: String] // contains the final set of replacements that were applied to the template after permutation and cascading
+}
+
+// MARK: - Logic to get the set of desired specs in usable form
+
+public func getAllPreconfiguredSpecs(
+    excludingRepositories excludedRepos: [String] = [],
+    swiftVersions excludedSwiftVersions: [String] = [],
+    tags excludedTags: [String] = []
+) -> [ImageSpecification] {
+    var specs: [ImageSpecification] = []
+
+    for repo in ImageBuilderConfiguration.preconfiguredImageSpecifications.repositories {
+        guard !excludedRepos.contains(repo.name) else { continue }
+        specs.append(contentsOf: repo.makeImageSpecs(withGlobalReplacements: ImageBuilderConfiguration.preconfiguredImageSpecifications.replacements))
+    }
+    specs.removeAll { spec in excludedTags.contains(spec.tag) || excludedSwiftVersions.contains { spec.tag.contains("swift:\($0)") } }
+    return specs
+}
+
+// MARK: - Very helpful utility method
+
+extension Dictionary {
+    public func updating(with other: [Key : Value]) -> [Key : Value] { self.merging(other, uniquingKeysWith: { $1 }) }
 }
 
 // MARK: - Actual specs!
@@ -149,11 +162,18 @@ extension ImageBuilderConfiguration {
     public static var preconfiguredImageSpecifications: Self { return .init(
     
         globalReplacements: [
-            "SWIFT_LATEST_RELEASE_VERSION": "5.2.1", // last updated 03/31/2020
+            "SWIFT_LATEST_RELEASE_VERSION": "5.2.2", // last updated 04/21/2020
             "SWIFT_BASE_REPO_NAME": "swift",
             "SWIFT_BASE_VERSION": "${SWIFT_VERSION}",
         ],
     
+// MARK: - Vapor Swift repo, `vapor/swift` prefix, duplicate declaration to make the "latest" tag without permutation.
+        .init(name: "vapor/swift", defaultDockerfile: "swift.Dockerfile",
+              replacements: ["REPOSITORY_NAME": "vapor/swift", "IMAGE_OS_VERSION": ""],
+              template: commonSwiftImageTemplate,
+              .init("SWIFT_VERSION", .value("latest")),
+              .init("IMAGE_VAPOR_VARIANT", .empty, .valueAndKeys("ci", ["CURL_DEPENDENCY": "curl"]))
+        ),
 // MARK: - Vapor Swift repo, `vapor/swift` prefix
         .init(
             name: "vapor/swift",
@@ -165,15 +185,14 @@ extension ImageBuilderConfiguration {
             .init("SWIFT_VERSION",
                 // Build latest release version and aliases for it, including "latest".
                 // Master is not latest; it's a nightly.
-                .value("${SWIFT_LATEST_RELEASE_VERSION}"),
                 .value("${SWIFT_LATEST_RELEASE_VERSION}${:chopVersion}"),
-                .value("latest"),
+                .value("${SWIFT_LATEST_RELEASE_VERSION}"),
                 
                 // Build swiftlang/nightly-master as master.
                 .valueAndKeys("master", ["SWIFT_BASE_REPO_NAME": "swiftlang/swift", "SWIFT_BASE_VERSION": "nightly-master"])
             ),
             // Swift Ubuntu OS version variant set - none (bionic by default), bionic, and xenial.
-            .init("IMAGE_OS_VERSION", .empty, .value("xenial"), .value("bionic")),
+            .init("IMAGE_OS_VERSION", .empty, .value("bionic"), .value("xenial")),
             // Image build purpose variant set - standard (no extra tag) and CI (requiring curl installed)
             .init("IMAGE_VAPOR_VARIANT", .empty, .valueAndKeys("ci", ["CURL_DEPENDENCY": "curl"]))
         ),
@@ -184,11 +203,11 @@ extension ImageBuilderConfiguration {
             defaultDockerfile: "swift.Dockerfile",
             replacements: ["REPOSITORY_NAME": "vapor3/swift", "LIBSSL_DEPENDENCY": "libssl-dev"],
             template: commonSwiftImageTemplate,
-            // Build latest again, plus a couple of older ones and their aliases.
+            // Build a couple of older ones and their aliases.
             .init("SWIFT_VERSION",
-                .value("5.0.3"), .value("5.0"),
+                .value("${SWIFT_LATEST_RELEASE_VERSION}${:chopVersion}"), .value("${SWIFT_LATEST_RELEASE_VERSION}"),
                 .value("5.1.5"), .value("5.1"),
-                .value("latest"), .value("${SWIFT_LATEST_RELEASE_VERSION}"), .value("${SWIFT_LATEST_RELEASE_VERSION}${:chopVersion}")
+                .value("5.0.3"), .value("5.0")
             ),
             .init("IMAGE_OS_VERSION", .empty, .value("xenial"), .value("bionic")),
             .init("IMAGE_VAPOR_VARIANT", .empty, .valueAndKeys("ci", ["CURL_DEPENDENCY": "curl"]))
@@ -208,8 +227,8 @@ extension ImageBuilderConfiguration {
             
             // Build images for xenial and bionic, and provide version number aliases.
             .init("UBUNTU_OS_IMAGE_VERSION",
-                .valueAndKeys("16.04", ubuntuXenialDeps), .valueAndKeys("18.04", ubuntuBionicDeps),
-                .valueAndKeys("xenial", ubuntuXenialDeps), .valueAndKeys("bionic", ubuntuBionicDeps)
+                .valueAndKeys("16.04", ubuntuXenialDeps), .valueAndKeys("xenial", ubuntuXenialDeps),
+                .valueAndKeys("18.04", ubuntuBionicDeps), .valueAndKeys("bionic", ubuntuBionicDeps)
             )
         )
 
