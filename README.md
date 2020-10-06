@@ -12,7 +12,7 @@
         <img src="https://img.shields.io/badge/docker-hub-blue" alt="Vapor images on Docker Hub">
     </a>
     <a href="https://swift.org">
-        <img src="https://img.shields.io/badge/swift-5.2-brightgreen.svg" alt="Swift 5.2">
+        <img src="https://img.shields.io/badge/swift-5.3-brightgreen.svg" alt="Swift 5.3">
     </a>
     <a href="https://twitter.com/codevapor">
         <img src="https://img.shields.io/badge/twitter-codevapor-5AA9E7.svg" alt="Twitter">

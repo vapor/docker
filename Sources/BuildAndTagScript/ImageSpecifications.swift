@@ -162,7 +162,7 @@ extension ImageBuilderConfiguration {
     public static var preconfiguredImageSpecifications: Self { return .init(
     
         globalReplacements: [
-            "SWIFT_LATEST_RELEASE_VERSION": "5.2.2", // last updated 04/21/2020
+            "SWIFT_LATEST_RELEASE_VERSION": "5.3", // last updated 2020/10/06
             "SWIFT_BASE_REPO_NAME": "swift",
             "SWIFT_BASE_VERSION": "${SWIFT_VERSION}",
         ],
