@@ -19,3 +19,4 @@
     </a>
 </p>
 
+**This repository is now deprecated in favour of the standard Swift Docker images**
